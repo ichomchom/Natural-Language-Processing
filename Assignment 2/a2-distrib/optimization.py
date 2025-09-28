@@ -5,10 +5,11 @@ import numpy as np
 import scipy.special
 import matplotlib.pyplot as plt
 
-### 
-# IMPLEMENT ME! REPLACE WITH YOUR ANSWER TO PART 1B
-OPTIMAL_STEP_SIZE = 1.0
 ###
+# IMPLEMENT ME! REPLACE WITH YOUR ANSWER TO PART 1B
+OPTIMAL_STEP_SIZE = 0.1
+###
+
 
 def _parse_args():
     """
@@ -16,10 +17,13 @@ def _parse_args():
     :return: the parsed args bundle
     """
     parser = argparse.ArgumentParser(description='optimization.py')
-    parser.add_argument('--func', type=str, default='QUAD', help='function to optimize (QUAD or NN)')
+    parser.add_argument('--func', type=str, default='QUAD',
+                        help='function to optimize (QUAD or NN)')
     parser.add_argument('--lr', type=float, default=1., help='learning rate')
-    parser.add_argument('--weight_decay', type=float, default=0., help='weight decay')
-    parser.add_argument('--epochs', type=int, default=100, help='number of epochs')
+    parser.add_argument('--weight_decay', type=float,
+                        default=0., help='weight decay')
+    parser.add_argument('--epochs', type=int, default=100,
+                        help='number of epochs')
     args = parser.parse_args()
     return args
 
@@ -41,7 +45,8 @@ def quadratic_grad(x1, x2):
     :param x2: second coordinate
     :return: a one-dimensional numpy array containing two elements representing the gradient
     """
-    raise Exception("Implement me!")
+
+    return np.array([2*(x1 - 1), 16*(x2 - 1)])
 
 
 def sgd_test_quadratic(args):
@@ -57,7 +62,8 @@ def sgd_test_quadratic(args):
     for iter in range(0, args.epochs):
         grad = quadratic_grad(curr_point[0], curr_point[1])
         if len(grad) != 2:
-            raise Exception("Gradient must be a two-dimensional array (vector containing [df/dx1, df/dx2])")
+            raise Exception(
+                "Gradient must be a two-dimensional array (vector containing [df/dx1, df/dx2])")
         next_point = curr_point - args.lr * grad
         points_history.append(curr_point)
         print("Point after epoch %i: %s" % (iter, repr(next_point)))
@@ -65,7 +71,8 @@ def sgd_test_quadratic(args):
     points_history.append(curr_point)
     cp = plt.contourf(X, Y, Z)
     plt.colorbar(cp)
-    plt.plot([p[0] for p in points_history], [p[1] for p in points_history], color='k', linestyle='-', linewidth=1, marker=".")
+    plt.plot([p[0] for p in points_history], [p[1] for p in points_history],
+             color='k', linestyle='-', linewidth=1, marker=".")
     plt.title('SGD on quadratic')
     plt.xlabel('x')
     plt.ylabel('y')

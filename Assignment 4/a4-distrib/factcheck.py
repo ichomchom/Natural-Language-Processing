@@ -7,7 +7,7 @@ import spacy
 import gc
 
 
-class FactExample:
+class FactExample(object):
     """
     :param fact: A string representing the fact to make a prediction on
     :param passages: List[dict], where each dict has keys "title" and "text". "title" denotes the title of the
@@ -26,15 +26,18 @@ class FactExample:
         return repr("fact=" + repr(self.fact) + "; label=" + repr(self.label) + "; passages=" + repr(self.passages))
 
 
-class EntailmentModel:
-    def __init__(self, model, tokenizer):
+class EntailmentModel(object):
+    def __init__(self, model, tokenizer, cuda=False):
         self.model = model
         self.tokenizer = tokenizer
+        self.cuda = cuda
 
     def check_entailment(self, premise: str, hypothesis: str):
         with torch.no_grad():
             # Tokenize the premise and hypothesis
             inputs = self.tokenizer(premise, hypothesis, return_tensors='pt', truncation=True, padding=True)
+            if self.cuda:
+                inputs = {key: value.to('cuda') for key, value in inputs.items()}
             # Get the model's prediction
             outputs = self.model(**inputs)
             logits = outputs.logits
@@ -67,23 +70,23 @@ class FactChecker(object):
         raise Exception("Don't call me, call my subclasses")
 
 
-class RandomGuessFactChecker(object):
+class RandomGuessFactChecker(FactChecker):
     def predict(self, fact: str, passages: List[dict]) -> str:
         prediction = np.random.choice(["S", "NS"])
         return prediction
 
 
-class AlwaysEntailedFactChecker(object):
+class AlwaysEntailedFactChecker(FactChecker):
     def predict(self, fact: str, passages: List[dict]) -> str:
         return "S"
 
 
-class WordRecallThresholdFactChecker(object):
+class WordRecallThresholdFactChecker(FactChecker):
     def predict(self, fact: str, passages: List[dict]) -> str:
         raise Exception("Implement me")
 
 
-class EntailmentFactChecker(object):
+class EntailmentFactChecker(FactChecker):
     def __init__(self, ent_model):
         self.ent_model = ent_model
 
@@ -92,7 +95,7 @@ class EntailmentFactChecker(object):
 
 
 # OPTIONAL
-class DependencyRecallThresholdFactChecker(object):
+class DependencyRecallThresholdFactChecker(FactChecker):
     def __init__(self):
         self.nlp = spacy.load('en_core_web_sm')
 
@@ -121,4 +124,3 @@ class DependencyRecallThresholdFactChecker(object):
             relation = (head, token.dep_, dependent)
             relations.add(relation)
         return relations
-

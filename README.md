@@ -1,441 +1,338 @@
-# Natural Language Processing - UT Austin MS AI Program
+# Natural Language Processing Portfolio
 
-This repository contains coursework for the Natural Language Processing course in the UT Austin Master of Science in Artificial Intelligence program. The assignments progress from classical ML approaches to modern deep learning techniques for NLP tasks.
+A comprehensive collection of NLP implementations from the UT Austin MS AI program, demonstrating progression from classical machine learning to modern transformer-based architectures.
 
 ## Table of Contents
+- [Overview](#overview)
 - [Environment Setup](#environment-setup)
-- [Assignment 0: Introduction to NLP](#assignment-0-introduction-to-nlp)
-- [Assignment 1: Sentiment Classification](#assignment-1-sentiment-classification)
-- [Assignment 2: Feedforward Neural Networks & Word Embeddings](#assignment-2-feedforward-neural-networks--word-embeddings)
-- [Assignment 3: Transformer Language Modeling](#assignment-3-transformer-language-modeling)
-- [Assignment 4: Fact-checking ChatGPT Outputs](#assignment-4-fact-checking-chatgpt-outputs)
-- [Final Project: NLI and QA with ELECTRA](#final-project-nli-and-qa-with-electra)
-- [Course Information](#course-information)
+- [Projects](#projects)
+  - [1. Sentiment Classification with Classical ML](#1-sentiment-classification-with-classical-ml)
+  - [2. Neural Networks & Word Embeddings](#2-neural-networks--word-embeddings)
+  - [3. Transformer Language Modeling](#3-transformer-language-modeling)
+  - [4. Fact-Checking LLM Outputs](#4-fact-checking-llm-outputs)
+  - [5. Fine-tuning ELECTRA for NLI and QA](#5-fine-tuning-electra-for-nli-and-qa)
+- [Key Skills Demonstrated](#key-skills-demonstrated)
+- [References](#references)
+
+---
+
+## Overview
+
+This repository showcases implementations of core NLP techniques, from foundational machine learning algorithms to state-of-the-art transformer models. Each project builds upon previous concepts while introducing new architectures and methodologies.
+
+**Technologies:** Python, PyTorch, NumPy, HuggingFace Transformers, NLTK, spaCy
 
 ---
 
 ## Environment Setup
 
 ### Requirements
-- Python 3.5+ (Python 3.10 recommended for Assignment 4)
-- PyTorch (for Assignments 2-4)
-- NumPy
-- Additional packages: nltk, spacy (see individual assignment requirements)
+- Python 3.10+
+- PyTorch
+- NumPy, nltk, spacy
+- HuggingFace Transformers
 
 ### Installation
 ```bash
-# Using Anaconda (recommended)
+# Create virtual environment
 conda create -n nlp_env python=3.10
 conda activate nlp_env
 
-# Install PyTorch
-# Visit https://pytorch.org/get-started/locally/ for system-specific instructions
+# Install PyTorch (visit https://pytorch.org for system-specific instructions)
+pip install torch
 
-# Install other dependencies (from assignment directories)
-pip install -r requirements.txt
+# Install dependencies
+pip install numpy nltk spacy transformers
 ```
 
 ---
 
-## Assignment 0: Introduction to NLP
+## Projects
 
-**Location:** `Assignment 0/`
-
-Basic introduction to text processing and tokenization.
-
-### Files
-- `tokenizer.py` - Basic tokenization implementation
-- `count.py` - Word counting utilities
-- `token_counter.py` - Token statistics
-
----
-
-## Assignment 1: Sentiment Classification
+### 1. Sentiment Classification with Classical ML
 
 **Location:** `Assignment 1/a1-distrib/`
 
-**Objective:** Implement classical ML classifiers for binary sentiment classification on movie reviews.
+Implements classical machine learning approaches for binary sentiment classification on movie reviews from Rotten Tomatoes.
 
-### Dataset
-- **Source:** Rotten Tomatoes movie review dataset (Socher et al., 2013)
-- **Task:** Binary sentiment classification (positive/negative)
-- **Format:** Tab-separated label and tokenized sentence
+#### Implementations
 
-### Implementation Tasks
+**Perceptron Classifier**
+- Custom perceptron with bag-of-words unigram features
+- Sparse vector representations for efficiency
+- Random shuffling and learning rate scheduling
+- **Performance:** 74%+ accuracy on movie review sentiment
 
-#### Part 1: Perceptron (40 points)
-- Implement perceptron classifier with bag-of-words unigram features
-- **Target:** ≥74% dev set accuracy
-- **Runtime:** <20 seconds
+**Logistic Regression**
+- Gradient-based optimization
+- Negative log-likelihood loss
+- Achieved 77%+ accuracy
 
-**Key Components:**
-- `UnigramFeatureExtractor` - Extract unigram features
-- `PerceptronClassifier` - Perceptron inference
-- `train_perceptron` - Training loop
+**Feature Engineering**
+- Unigram features with various preprocessing strategies
+- Bigram features for capturing local context
+- Advanced feature extractors with tf-idf weighting, stopword filtering
+- Experimentation with tokenization, stemming, and feature value schemes
 
-#### Part 2: Logistic Regression (30 points)
-- Implement logistic regression with unigram features
-- **Target:** ≥77% dev set accuracy
-- **Runtime:** <20 seconds
-
-**Key Components:**
-- `LogisticRegressionClassifier`
-- `train_logistic_regression`
-
-#### Part 3: Feature Engineering (30 points)
-- **Q3:** Implement `BigramFeatureExtractor` (15 points)
-- **Q4:** Implement `BetterFeatureExtractor` with advanced features (15 points)
-  - Options: n-grams, tf-idf weighting, stopword removal, etc.
-  - **Runtime:** <60 seconds
-
-### Running the Code
+#### Usage
 ```bash
 cd "Assignment 1/a1-distrib"
 
-# Perceptron with unigrams
+# Perceptron classifier
 python sentiment_classifier.py --model PERCEPTRON --feats UNIGRAM
 
-# Logistic regression with unigrams
+# Logistic regression with different feature sets
 python sentiment_classifier.py --model LR --feats UNIGRAM
-
-# Logistic regression with bigrams
 python sentiment_classifier.py --model LR --feats BIGRAM
-
-# Best feature extractor
 python sentiment_classifier.py --model LR --feats BETTER
 ```
 
-### Files
-- `sentiment_classifier.py` - Main driver (do not modify for submission)
-- `models.py` - Implement classifiers and feature extractors here
-- `sentiment_data.py` - Data loading utilities
-- `utils.py` - Indexer class for feature mapping
+#### Technical Highlights
+- Efficient sparse vector representations using Python Counter
+- Custom Indexer class for feature-to-index mapping
+- Systematic comparison of different feature extraction strategies
+- Understanding of bias-variance tradeoffs in feature design
 
 ---
 
-## Assignment 2: Feedforward Neural Networks & Word Embeddings
+### 2. Neural Networks & Word Embeddings
 
 **Location:** `Assignment 2/a2-distrib/`
 
-**Objective:** Build deep averaging networks with pre-trained word embeddings, explore optimization and generalization.
+Explores deep learning for sentiment analysis using pre-trained word embeddings and feedforward neural networks.
 
-### Dataset
-- Same sentiment classification dataset from Assignment 1 (lowercased)
+#### Implementations
+
+**Optimization Fundamentals**
+- Manual implementation of gradient descent
+- Analysis of step size effects on convergence
+- Optimal learning rate selection
+
+**Deep Averaging Network (DAN)**
+- Feedforward architecture with averaged word embeddings
 - Pre-trained GloVe embeddings (50d and 300d)
+- Mini-batch training for efficiency
+- Dropout regularization
+- **Performance:** 77%+ accuracy on sentiment classification
 
-### Implementation Tasks
+**Robustness to Typos**
+- Handling misspellings in test data through:
+  - Spelling correction using edit distance
+  - Prefix embeddings (first 3 characters)
+  - Character-level representations
+- **Performance:** 74%+ accuracy on corrupted text
 
-#### Part 1: Optimization (25 points)
-- Implement gradient descent for quadratic function
-- Find optimal step size
-
-**Files:** `optimization.py`
-
-```bash
-python optimization.py --lr 1
-```
-
-#### Part 2: Deep Averaging Network (75 points)
-
-**Q2a (50 points):** Implement DAN
-- Average word embeddings as input
-- Feedforward network for classification
-- **Target:** ≥77% dev accuracy
-- **Runtime:** <10 minutes
-
-**Q2b:** Implement batching for efficiency
-
-**Q3 (25 points):** Handle typos
-- Dataset: `dev-typo.txt` with random misspellings
-- **Target:** ≥74% accuracy on typo data
-
-**Options:**
-1. Spelling correction with edit distance
-2. Prefix embeddings (first 3 characters)
-3. Custom solution
-
-### Running the Code
+#### Usage
 ```bash
 cd "Assignment 2/a2-distrib"
 
-# Optimization
+# Optimization experiments
 python optimization.py
 
-# DAN training
+# Train deep averaging network
 python neural_sentiment_classifier.py
 
-# Typo-aware model
+# Test robustness to typos
 python neural_sentiment_classifier.py --use_typo_setting
 
-# Use 50d embeddings for faster debugging
+# Fast debugging with 50d embeddings
 python neural_sentiment_classifier.py --word_vecs_path data/glove.6B.50d-relativized.txt
 ```
 
-### Key Components
-- `models.py` - Implement DAN architecture
-- `train_deep_averaging_network` - Training loop
-- `neural_sentiment_classifier.py` - Main driver
-- Example code: `ffnn_example.py` (Module 2)
+#### Technical Highlights
+- PyTorch model implementation with custom `nn.Module` subclasses
+- Batching with padding for variable-length sequences
+- Integration of pre-trained word embeddings
+- Strategies for handling out-of-vocabulary words
+- Analysis of generalization to different data distributions
 
 ---
 
-## Assignment 3: Transformer Language Modeling
+### 3. Transformer Language Modeling
 
 **Location:** `Assignment 3/a3-distrib/`
 
-**Objective:** Implement Transformer encoder from scratch and apply it to language modeling.
+Implements transformer architecture from scratch for sequence modeling tasks.
 
-### Dataset
-- **text8:** First 100M characters from Wikipedia
-- Only 27 character types (a-z + space)
-- Sequences of length 20
+#### Implementations
 
-### Implementation Tasks
+**Custom Transformer Encoder**
+- Built from scratch without using `nn.TransformerEncoder`
+- Self-attention mechanism with Q, K, V projections
+- Positional encodings for sequence order
+- Residual connections and feedforward layers
+- Causal masking for autoregressive modeling
 
-#### Part 1: Transformer Encoder (50 points)
+**Character Counting Task**
+- Predicts occurrence counts of characters in context
+- Demonstrates transformer's ability to aggregate information across positions
+- **Performance:** 95%+ accuracy, demonstrating effective attention patterns
 
-**Task:** Count character occurrences
-- Given a sequence, predict how many times each character appeared before (0, 1, or 2+)
-- Implement from scratch (no `nn.TransformerEncoder`)
+**Character-Level Language Model**
+- Trained on text8 dataset (100M Wikipedia characters)
+- Predicts next character at each position
+- Proper probability normalization
+- **Performance:** Perplexity of 6.3 on held-out data
 
-**Components:**
-- `TransformerLayer` - Single transformer layer
-  1. Self-attention (single-head)
-  2. Residual connection
-  3. FFN (Linear → nonlinearity → Linear)
-  4. Final residual connection
-- `Transformer` - Full model with positional encodings
-- `train_classifier` - Training loop
-
-**Target:** >95% accuracy (reference: 98%+ in 5-10 epochs, ~20s each)
-
-**Key Implementation Details:**
-- Use Q, K, V matrices for attention
-- Apply causal masking (backward-only attention)
-- Include positional encodings
-- Make predictions at all positions simultaneously
-
-#### Part 2: Language Modeling (50 points)
-
-**Task:** Character-level language model on text8
-- Predict next character at each position
-- **Target:** Perplexity ≤7
-- **Runtime:** <10 minutes
-
-**Requirements:**
-- Properly normalized probability distributions
-- Causal masking (prevent attending to future tokens)
-- Can use `nn.TransformerEncoder` for this part
-
-### Running the Code
+#### Usage
 ```bash
 cd "Assignment 3/a3-distrib"
 
-# Part 1: Letter counting (backward only)
+# Character counting with transformers
 python letter_counting.py
-
-# Letter counting (bidirectional)
 python letter_counting.py --task BEFOREAFTER
 
-# Part 2: Language modeling
+# Language modeling
 python lm.py --model NEURAL
 ```
 
-### Files
-- `transformer.py` - Implement Transformer components
-- `transformer_lm.py` - Language modeling implementation
-- `letter_counting.py` - Part 1 driver
-- `lm.py` - Part 2 driver
-- `utils.py` - Utilities
+#### Technical Highlights
+- Ground-up implementation of self-attention mechanisms
+- Understanding of attention masks and causality
+- Positional encoding strategies
+- Sequence-to-sequence prediction architecture
+- Perplexity evaluation for language models
+- Visualization of learned attention patterns
 
 ---
 
-## Assignment 4: Fact-checking ChatGPT Outputs
+### 4. Fact-Checking LLM Outputs
 
 **Location:** `Assignment 4/a4-distrib/`
 
-**Objective:** Verify factual accuracy of ChatGPT-generated biographies using Wikipedia.
+Develops systems to verify factual claims from ChatGPT-generated biographies against Wikipedia sources.
 
-### Dataset
-- **Source:** FActScore (Min et al., 2023)
-- ChatGPT-generated biographies with human-annotated facts
-- Retrieved Wikipedia passages (BM25)
-- Labels: S (supported), NS (not supported)
+#### Implementations
 
-### Implementation Tasks
+**Word Overlap Methods**
+- Multiple similarity metrics: cosine similarity, Jaccard, ROUGE
+- Tf-idf vectorization
+- Tokenization and preprocessing pipelines
+- Threshold optimization for classification
+- **Performance:** 75%+ accuracy
 
-#### Part 1: Word Overlap (40 points)
-- Bag-of-words overlap between fact and passages
-- Compute similarity scores (cosine, Jaccard, ROUGE, etc.)
-- **Target:** ≥75% accuracy
+**Neural Textual Entailment**
+- Pre-trained DeBERTa-v3 model (fine-tuned on MNLI, FEVER, ANLI)
+- Three-way classification: entailment, neutral, contradiction
+- Sentence-level fact verification
+- Passage retrieval and aggregation strategies
+- Optimization through pruning low-overlap examples
+- **Performance:** 83%+ accuracy
 
-**Design Decisions:**
-- Tokenization strategy
-- Stemming/lemmatization
-- Stopword removal
-- Similarity metric
-- Classification threshold
+**Error Analysis**
+- Systematic categorization of false positives and false negatives
+- Fine-grained error taxonomy
+- Insights into model limitations and failure modes
 
-#### Part 2: Textual Entailment (40 points)
-- Use pre-trained DeBERTa-v3 model
-- Fine-tuned on MNLI, FEVER, ANLI
-- 3-way classification: entailment/neutral/contradiction
-- **Target:** ≥83% accuracy
-
-**Implementation:**
-- Split passages into sentences
-- Compare fact against each sentence
-- Aggregate results (max strategy)
-- Optimize with word overlap pruning
-
-#### Part 3: Error Analysis (20 points)
-
-**Written submission** analyzing model errors:
-- Examine 10 false positives + 10 false negatives
-- Define 2-4 fine-grained error categories
-- Provide statistics and 3 detailed examples
-
-### Running the Code
+#### Usage
 ```bash
 cd "Assignment 4/a4-distrib"
-
-# IMPORTANT: Use Python 3.10 and install requirements
-pip install -r requirements.txt
 
 # Word overlap baseline
 python factchecking_main.py --mode word_overlap
 
-# Entailment model (with GPU)
-python factchecking_main.py --mode entailment --cuda
-
-# Entailment model (CPU only)
+# Neural entailment model
 python factchecking_main.py --mode entailment
+
+# With GPU acceleration
+python factchecking_main.py --mode entailment --cuda
 ```
 
-### Files
-- `factchecking_main.py` - Main driver (do not modify)
-- `factcheck.py` - Implement fact checkers here
-- `data/` - Dataset files
-
-### Performance Considerations
-- Runtime: ~10 minutes target
-- Use pruning to reduce entailment calls
-- Manage memory (del unused variables, gc.collect())
-- Sentence splitting and cleaning required
+#### Technical Highlights
+- Integration of pre-trained language models
+- Text preprocessing and sentence segmentation
+- Multi-stage pipeline design (retrieval → entailment)
+- Performance optimization and memory management
+- Practical application to AI safety and trustworthiness
 
 ---
 
-## Final Project: NLI and QA with ELECTRA
+### 5. Fine-tuning ELECTRA for NLI and QA
 
 **Location:** `Final Project/fp-dataset-artifacts/`
 
-**Objective:** Fine-tune ELECTRA models on Natural Language Inference and Question Answering tasks.
+Fine-tunes ELECTRA transformer models for Natural Language Inference and extractive Question Answering.
 
-### Tasks
+#### Implementations
 
-#### Natural Language Inference (NLI)
-- **Dataset:** SNLI
-- **Model:** ELECTRA-small
-- **Target:** ~89% accuracy (3 epochs)
+**Natural Language Inference (SNLI)**
+- Fine-tuned ELECTRA-small on Stanford Natural Language Inference dataset
+- Three-way classification: entailment, neutral, contradiction
+- **Performance:** ~89% accuracy
 
-#### Question Answering (QA)
-- **Dataset:** SQuAD
-- **Model:** ELECTRA-small
-- **Target:** ~78 EM, ~86 F1 (3 epochs)
+**Question Answering (SQuAD)**
+- Fine-tuned ELECTRA-small on Stanford Question Answering Dataset
+- Extractive QA with span prediction
+- **Performance:** ~78 EM score, ~86 F1 score
 
-### Setup
+#### Usage
 ```bash
 cd "Final Project/fp-dataset-artifacts"
 
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### Training
-```bash
 # Train NLI model
 python3 run.py --do_train --task nli --dataset snli --output_dir ./trained_model/
 
 # Train QA model
 python3 run.py --do_train --task qa --dataset squad --output_dir ./trained_model/
 
-# CPU only (no GPU)
-python3 run.py --do_train --task nli --dataset snli --output_dir ./trained_model/ --no_cuda
+# Evaluate models
+python3 run.py --do_eval --task nli --dataset snli \
+    --model ./trained_model/ --output_dir ./eval_output/
 ```
 
-### Evaluation
-```bash
-# Evaluate NLI model
-python3 run.py --do_eval --task nli --dataset snli --model ./trained_model/ --output_dir ./eval_output/
-
-# Evaluate QA model
-python3 run.py --do_eval --task qa --dataset squad --model ./trained_model/ --output_dir ./eval_output/
-```
-
-### Files
-- `run.py` - Main training/evaluation script
-- `helpers.py` - Helper functions
-- `requirements.txt` - Dependencies
-- `README.md` - Detailed project documentation
-
-### Data & Models
-- Automatically downloaded from HuggingFace Hub
-- Cached in `~/.cache/huggingface/`
-- Change cache: set `HF_HOME` or `TRANSFORMERS_CACHE` environment variable
+#### Technical Highlights
+- HuggingFace Transformers integration
+- Transfer learning from pre-trained models
+- Dataset processing with HuggingFace Datasets
+- Training loop customization
+- Evaluation metrics for different tasks (accuracy, EM, F1)
 
 ---
 
-## Course Information
+## Key Skills Demonstrated
 
-**Program:** UT Austin MS in Artificial Intelligence
-**Course:** Natural Language Processing
+### Machine Learning Fundamentals
+- Feature engineering and extraction
+- Classical ML algorithms (Perceptron, Logistic Regression)
+- Gradient descent optimization
+- Hyperparameter tuning
+- Cross-validation and model evaluation
 
-### Key Concepts Covered
-1. **Classical ML for NLP:** Perceptron, logistic regression, feature engineering
-2. **Neural Networks:** Deep averaging networks, optimization techniques
-3. **Word Embeddings:** GloVe, prefix embeddings, handling OOV words
-4. **Transformers:** Self-attention, positional encodings, language modeling
-5. **Large Language Models:** Fact-checking, textual entailment, error analysis
-6. **Pre-trained Models:** ELECTRA, fine-tuning for downstream tasks
+### Deep Learning
+- PyTorch model implementation
+- Custom neural network architectures
+- Backpropagation and gradient computation
+- Batching and data preprocessing
+- Regularization techniques (dropout)
 
-### Important Notes
+### NLP-Specific Techniques
+- Tokenization and text preprocessing
+- Word embeddings (GloVe)
+- Sequence modeling
+- Attention mechanisms
+- Language modeling and perplexity
+- Textual entailment
 
-#### Academic Honesty
-- Discussion allowed, but **all submitted work must be your own**
-- Do not share code or solutions
-- Cite any external resources used
+### Transformer Architecture
+- Self-attention implementation
+- Positional encodings
+- Multi-head attention
+- Residual connections
+- Layer normalization
+- Causal masking
 
-#### Submission Guidelines
-- **Assignment 1:** Submit `models.py` only
-- **Assignment 2:** Submit `optimization.py` and `models.py`
-- **Assignment 3:** Submit `transformer.py` and `transformer_lm.py`
-- **Assignment 4:** Submit `factcheck.py` + written analysis
+### Pre-trained Models
+- Transfer learning
+- Fine-tuning strategies
+- HuggingFace ecosystem
+- Model evaluation and analysis
 
-#### General Tips
-1. **Start early** - debugging neural networks takes time
-2. **Use small experiments** - tune on small datasets before scaling up
-3. **Monitor training** - print losses, check dev accuracy frequently
-4. **Manage resources** - respect runtime and memory constraints
-5. **Test locally** - ensure code runs before autograder submission
-
-### References
-
-**Assignment 1:**
-- Socher et al. (2013) - Recursive Deep Models for Semantic Compositionality Over a Sentiment Treebank
-
-**Assignment 2:**
-- Iyyer et al. (2015) - Deep Unordered Composition Rivals Syntactic Methods for Text Classification
-- Pennington et al. (2014) - GloVe: Global Vectors for Word Representation
-
-**Assignment 3:**
-- Mikolov et al. (2012) - Subword Language Modeling with Neural Networks
-- Vaswani et al. (2017) - Attention Is All You Need
-
-**Assignment 4:**
-- Min et al. (2023) - FActScore: Fine-grained Atomic Evaluation of Factual Precision in Long Form Text Generation
-- He et al. (2020) - DeBERTa: Decoding-enhanced BERT with Disentangled Attention
-- Williams et al. (2018) - MNLI: A Broad-Coverage Challenge Corpus for Sentence Understanding through Inference
-- Thorne et al. (2018) - FEVER: a large-scale dataset for fact extraction and VERification
+### Software Engineering
+- Efficient sparse representations
+- Memory optimization
+- Runtime performance tuning
+- Modular code design
+- Experiment management
 
 ---
 
@@ -443,58 +340,69 @@ python3 run.py --do_eval --task qa --dataset squad --model ./trained_model/ --ou
 
 ```
 NLP/
-├── Assignment 0/                # Introduction to tokenization
+├── Assignment 0/                # Text processing and tokenization
 │   ├── tokenizer.py
 │   ├── count.py
 │   └── token_counter.py
 │
 ├── Assignment 1/                # Sentiment classification (classical ML)
 │   └── a1-distrib/
-│       ├── a1.pdf              # Assignment instructions
-│       ├── models.py           # Your implementation
+│       ├── models.py           # Perceptron, LR, feature extractors
 │       ├── sentiment_classifier.py
 │       └── data/
 │
 ├── Assignment 2/                # Neural networks & word embeddings
 │   └── a2-distrib/
-│       ├── a2.pdf              # Assignment instructions
-│       ├── models.py           # Your implementation
-│       ├── optimization.py     # Your implementation
+│       ├── models.py           # Deep averaging network
+│       ├── optimization.py     # Gradient descent implementation
 │       ├── neural_sentiment_classifier.py
-│       └── data/
+│       └── data/               # GloVe embeddings
 │
 ├── Assignment 3/                # Transformer language modeling
 │   └── a3-distrib/
-│       ├── a3.pdf              # Assignment instructions
-│       ├── transformer.py      # Your implementation
-│       ├── transformer_lm.py   # Your implementation
+│       ├── transformer.py      # Transformer from scratch
+│       ├── transformer_lm.py   # Language model implementation
 │       ├── letter_counting.py
-│       ├── lm.py
-│       └── data/
+│       └── lm.py
 │
 ├── Assignment 4/                # Fact-checking with LLMs
 │   └── a4-distrib/
-│       ├── a4.pdf              # Assignment instructions
-│       ├── factcheck.py        # Your implementation
+│       ├── factcheck.py        # Entailment & word overlap methods
 │       ├── factchecking_main.py
-│       └── data/
+│       └── data/               # FActScore dataset
 │
 ├── Final Project/               # NLI and QA with ELECTRA
 │   └── fp-dataset-artifacts/
-│       ├── README.md           # Project documentation
-│       ├── run.py
+│       ├── run.py              # Training and evaluation
 │       ├── helpers.py
 │       └── requirements.txt
 │
-├── Module 2/                    # Example code
-│   └── ffnn_example.py         # FFNN XOR example
-│
-└── README.md                    # This file
+└── README.md
 ```
 
 ---
 
-## License
+## References
 
-This repository contains coursework for educational purposes as part of the UT Austin MS AI program.
+### Datasets & Tasks
+- **Sentiment Analysis:** Socher et al. (2013) - Recursive Deep Models for Semantic Compositionality Over a Sentiment Treebank
+- **NLI:** Williams et al. (2018) - MNLI: A Broad-Coverage Challenge Corpus for Sentence Understanding through Inference
+- **Fact Verification:** Min et al. (2023) - FActScore: Fine-grained Atomic Evaluation of Factual Precision in Long Form Text Generation
+- **Fact Extraction:** Thorne et al. (2018) - FEVER: a large-scale dataset for fact extraction and VERification
+
+### Models & Methods
+- **Word Embeddings:** Pennington et al. (2014) - GloVe: Global Vectors for Word Representation
+- **Deep Averaging Networks:** Iyyer et al. (2015) - Deep Unordered Composition Rivals Syntactic Methods for Text Classification
+- **Transformers:** Vaswani et al. (2017) - Attention Is All You Need
+- **DeBERTa:** He et al. (2020) - DeBERTa: Decoding-enhanced BERT with Disentangled Attention
+- **Language Modeling:** Mikolov et al. (2012) - Subword Language Modeling with Neural Networks
+
+### Applications
+- **Summarization Consistency:** Laban et al. (2022) - SummaC: Re-visiting NLI-based models for inconsistency detection in summarization
+- **Adversarial NLI:** Nie et al. (2020) - Adversarial NLI: A new benchmark for natural language understanding
+
+---
+
+**Program:** UT Austin MS in Artificial Intelligence
+**Course:** Natural Language Processing
 

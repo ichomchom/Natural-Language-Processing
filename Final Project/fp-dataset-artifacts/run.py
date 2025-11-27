@@ -1,3 +1,5 @@
+import torch.nn.functional as F
+import torch
 import datasets
 from transformers import AutoTokenizer, AutoModelForSequenceClassification, \
     AutoModelForQuestionAnswering, Trainer, TrainingArguments, HfArgumentParser
@@ -8,6 +10,42 @@ import os
 import json
 
 NUM_PREPROCESSING_WORKERS = 2
+
+
+class DebiasedTrainer(Trainer):
+    def __init__(self, bias_model=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.bias_model = bias_model
+        if self.bias_model is not None:
+            self.bias_model.eval()
+            self.bias_model.to(self.model.device)
+
+    def compute_loss(self, model, inputs, return_outputs=False):
+        labels = inputs.get("labels")
+        outputs = model(**inputs)
+        logits = outputs.logits
+
+        if self.bias_model is not None:
+            with torch.no_grad():
+                biased_outputs = self.bias_model(**inputs)
+                biased_logits = biased_outputs.logits
+
+            biased_probs = F.softmax(biased_logits, dim=-1)
+
+            biased_confidence = biased_probs.max(dim=-1)[0]
+
+            weights = 1.0 - 0.3 * biased_confidence
+
+            loss_fct = torch.nn.CrossEntropyLoss(reduction='none')
+            loss = loss_fct(logits, labels)
+            loss = (loss * weights).mean()
+        else:
+            loss_fct = torch.nn.CrossEntropyLoss()
+            loss = loss_fct(logits, labels)
+
+        inputs["labels"] = labels
+
+        return (loss, outputs) if return_outputs else loss
 
 
 def main():
@@ -47,7 +85,8 @@ def main():
                       help='Limit the number of examples to train on.')
     argp.add_argument('--max_eval_samples', type=int, default=None,
                       help='Limit the number of examples to evaluate on.')
-
+    argp.add_argument('--biased_model', type=str, default=None,
+                      help='Path to a hypothesis-only model for ensemble debiasing')
     training_args, args = argp.parse_args_into_dataclasses()
 
     # Dataset selection
@@ -68,10 +107,11 @@ def main():
         dataset_id = tuple(args.dataset.split(':')) if args.dataset is not None else \
             default_datasets[args.task]
         # MNLI has two validation splits (one with matched domains and one with mismatched domains). Most datasets just have one "validation" split
-        eval_split = 'validation_matched' if dataset_id == ('glue', 'mnli') else 'validation'
+        eval_split = 'validation_matched' if dataset_id == (
+            'glue', 'mnli') else 'validation'
         # Load the raw data
         dataset = datasets.load_dataset(*dataset_id)
-    
+
     # NLI models need to have the output label count specified (label 0 is "entailed", 1 is "neutral", and 2 is "contradiction")
     task_kwargs = {'num_labels': 3} if args.task == 'nli' else {}
 
@@ -90,8 +130,11 @@ def main():
 
     # Select the dataset preprocessing function (these functions are defined in helpers.py)
     if args.task == 'qa':
-        prepare_train_dataset = lambda exs: prepare_train_dataset_qa(exs, tokenizer)
-        prepare_eval_dataset = lambda exs: prepare_validation_dataset_qa(exs, tokenizer)
+        def prepare_train_dataset(
+            exs): return prepare_train_dataset_qa(exs, tokenizer)
+
+        def prepare_eval_dataset(
+            exs): return prepare_validation_dataset_qa(exs, tokenizer)
     elif args.task == 'nli':
         prepare_train_dataset = prepare_eval_dataset = \
             lambda exs: prepare_dataset_nli(exs, tokenizer, args.max_length)
@@ -103,7 +146,7 @@ def main():
     if dataset_id == ('snli',):
         # remove SNLI examples with no label
         dataset = dataset.filter(lambda ex: ex['label'] != -1)
-    
+
     train_dataset = None
     eval_dataset = None
     train_dataset_featurized = None
@@ -130,8 +173,17 @@ def main():
         )
 
     # Select the training configuration
-    trainer_class = Trainer
+
+    bias_model = None
     eval_kwargs = {}
+    if args.biased_model is not None:
+        print(f"Loading bias model from {args.biased_model}")
+        bias_model = model_class.from_pretrained(
+            args.biased_model, **task_kwargs)
+        trainer_class = DebiasedTrainer
+    else:
+        trainer_class = Trainer
+
     # If you want to use custom metrics, you should define your own "compute_metrics" function.
     # For an example of a valid compute_metrics function, see compute_accuracy in helpers.py.
     compute_metrics = None
@@ -141,29 +193,34 @@ def main():
         trainer_class = QuestionAnsweringTrainer
         eval_kwargs['eval_examples'] = eval_dataset
         metric = evaluate.load('squad')   # datasets.load_metric() deprecated
-        compute_metrics = lambda eval_preds: metric.compute(
+        def compute_metrics(eval_preds): return metric.compute(
             predictions=eval_preds.predictions, references=eval_preds.label_ids)
     elif args.task == 'nli':
         compute_metrics = compute_accuracy
-    
 
     # This function wraps the compute_metrics function, storing the model's predictions
     # so that they can be dumped along with the computed metrics
     eval_predictions = None
+
     def compute_metrics_and_store_predictions(eval_preds):
         nonlocal eval_predictions
         eval_predictions = eval_preds
         return compute_metrics(eval_preds)
 
     # Initialize the Trainer object with the specified arguments and the model and dataset we loaded above
-    trainer = trainer_class(
-        model=model,
-        args=training_args,
-        train_dataset=train_dataset_featurized,
-        eval_dataset=eval_dataset_featurized,
-        tokenizer=tokenizer,
-        compute_metrics=compute_metrics_and_store_predictions
-    )
+    trainer_kwargs = {
+        'model': model,
+        'args': training_args,
+        'train_dataset': train_dataset_featurized,
+        'eval_dataset': eval_dataset_featurized,
+        'tokenizer': tokenizer,
+        'compute_metrics': compute_metrics_and_store_predictions
+    }
+
+    if bias_model is not None:
+        trainer_kwargs['bias_model'] = bias_model
+
+    trainer = trainer_class(**trainer_kwargs)
     # Train and/or evaluate
     if training_args.do_train:
         trainer.train()
@@ -195,7 +252,8 @@ def main():
 
         with open(os.path.join(training_args.output_dir, 'eval_predictions.jsonl'), encoding='utf-8', mode='w') as f:
             if args.task == 'qa':
-                predictions_by_id = {pred['id']: pred['prediction_text'] for pred in eval_predictions.predictions}
+                predictions_by_id = {pred['id']: pred['prediction_text']
+                                     for pred in eval_predictions.predictions}
                 for example in eval_dataset:
                     example_with_prediction = dict(example)
                     example_with_prediction['predicted_answer'] = predictions_by_id[example['id']]
@@ -204,8 +262,10 @@ def main():
             else:
                 for i, example in enumerate(eval_dataset):
                     example_with_prediction = dict(example)
-                    example_with_prediction['predicted_scores'] = eval_predictions.predictions[i].tolist()
-                    example_with_prediction['predicted_label'] = int(eval_predictions.predictions[i].argmax())
+                    example_with_prediction['predicted_scores'] = eval_predictions.predictions[i].tolist(
+                    )
+                    example_with_prediction['predicted_label'] = int(
+                        eval_predictions.predictions[i].argmax())
                     f.write(json.dumps(example_with_prediction))
                     f.write('\n')
 

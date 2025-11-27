@@ -1,0 +1,433 @@
+\documentclass[11pt]{article}
+
+% Change "review" to "final" to generate the final (sometimes called camera-ready) version.
+% Change to "preprint" to generate a non-anonymous version with page numbers.
+\usepackage[final]{acl}
+
+% Standard package includes
+\usepackage{times}
+\usepackage{latexsym}
+
+% For proper rendering and hyphenation of words containing Latin characters (including in bib files)
+\usepackage[T1]{fontenc}
+% For Vietnamese characters
+% \usepackage[T5]{fontenc}
+% See https://www.latex-project.org/help/documentation/encguide.pdf for other character sets
+
+% This assumes your files are encoded as UTF8
+\usepackage[utf8]{inputenc}
+
+% This is not strictly necessary, and may be commented out,
+% but it will improve the layout of the manuscript,
+% and will typically save some space.
+\usepackage{microtype}
+
+% This is also not strictly necessary, and may be commented out.
+% However, it will improve the aesthetics of text in
+% the typewriter font.
+\usepackage{inconsolata}
+
+%Including images in your LaTeX document requires adding
+%additional package(s)
+\usepackage{graphicx}
+
+% If the title and author information does not fit in the area allocated, uncomment the following
+%
+%\setlength\titlebox{<dim>}
+%
+% and set <dim> to something 5cm or larger.
+
+\title{The Challenge of Debiasing NLI Models: Why Hypothesis-Only Confidence is Insufficient}
+
+% Author information can be set in various styles:
+% For several authors from the same institution:
+% \author{Author 1 \and ... \and Author n \\
+%         Address line \\ ... \\ Address line}
+% if the names do not fit well on one line use
+%         Author 1 \\ {\bf Author 2} \\ ... \\ {\bf Author n} \\
+% For authors from different institutions:
+% \author{Author 1 \\ Address line \\  ... \\ Address line
+%         \And  ... \And
+%         Author n \\ Address line \\ ... \\ Address line}
+% To start a separate ``row'' of authors use \AND, as in
+% \author{Author 1 \\ Address line \\  ... \\ Address line
+%         \AND
+%         Author 2 \\ Address line \\ ... \\ Address line \And
+%         Author 3 \\ Address line \\ ... \\ Address line}
+
+\author{Anonymous Individual Submission}
+
+\begin{document}
+\maketitle
+\begin{abstract}
+Pre-trained models achieve high accuracy on NLI benchmarks but may rely on dataset artifacts rather than genuine reasoning. We investigate the ELECTRA-small \cite{clark2020electra} model's performance on SNLI \cite{bowman2015large}, finding that a hypothesis-only baseline achieves 89.40\% accuracy, only 0.29\% below the baseline model's 89.69\%. This reveals severe hypothesis bias where the model makes predictions without considering premise-hypothesis relationships. Through qualitative analysis, we identify three primary error patterns: exact word overlap, semantic associations, and action overlap, all driven by hypothesis-only artifacts. We implement ensemble debiasing to address this bias, systematically exploring weighting strengths $( \alpha =0.3, 0.5, 0.9)$. However, this approach degrades performance, increasing contradiction→neutral errors from 231 to 240. Our analysis suggests that hypothesis-only confidence does not cleanly separate spurious shortcuts from legitimate linguistic signals, highlighting the challenge of debiasing NLI models.
+\end{abstract}
+
+\section{Introduction}
+
+Natural Language Inference (NLI) is the task of determining whether a hypothesis is entailed by, contradicts, or is neutral with respect to a given premise. While pre-trained models like ELECTRA achieve high accuracy on benchmark datasets such as SNLI, recent work has shown that these models often exploit dataset artifacts, spurious correlations that allow prediction without genuine reasoning  \cite{poliak2018hypothesis, mccoy2019right}.
+
+A particularly concerning artifact is hypothesis bias, where models can achieve high accuracy using only the hypothesis text, ignoring the premise entirely. This suggests that models learn statistical patterns in hypothesis text rather than understanding the logical relationships between premise and hypothesis pairs.
+
+In this work, we investigate hypothesis bias in the ELECTRA-small model trained on SNLI and attempt to mitigate it through ensemble debiasing. Our contributions are:
+
+1. \textbf{Analysis of hypothesis bias}: We demonstrate that a hypothesis-only model achieves 89.40\% accuracy, nearly matching the baseline model's 89.69\%, and identify specific error patterns driven by hypothesis artifacts.
+
+2. \textbf{Systematic debiasing exploration}: We implement Product-of-Experts debiasing with varying weighting strengths, finding that while moderate
+   weighting ($\alpha$=0.5) performs best, it still underperforms the baseline.
+
+3. \textbf{Insights into debiasing challenges}: We analyze why debiasing failed, revealing that hypothesis-only confidence captures both shortcuts and legitimate signals, making simple downweighting insufficient.
+
+\section{Baseline Model Analysis}
+
+\subsection{Experimental Setup}
+
+We trained all models from scratch using ELECTRA-small \cite{clark2020electra} as our base architecture. The SNLI dataset \cite{bowman2015large} consists of 550,152 training examples, 10,000 validation examples, and 10,000 test examples. We report results on the validation set (9,842 examples after filtering invalid labels).
+
+All models were trained for 3 epochs with a batch size of 256 per device. We used the Hugging Face Transformers library for implementation with default Trainer settings (AdamW optimizer, learning rate 5e-5, weight decay 0.01). The baseline model processes both premise and hypothesis, while the hypothesis-only model receives only the hypothesis text as input. For the debiased models, we trained three variants ($\alpha$=0.3, 0.5, 0.9) from scratch using the weighted loss function described in Section 3.2.2, where the hypothesis-only model serves as the bias expert.
+
+\subsection{Baseline Performance}
+
+We fine-tuned ELECTRA-small on the SNLI dataset for 3 epochs, achieving an overall accuracy of 89.69\% on the development set. Despite this high performance, the model made 1,015 errors (out of 9,842 examples), suggesting potential weaknesses in its reasoning capabilities.
+
+\subsection{Confusion Matrix Analysis}
+
+We analyzed the distribution of errors across the three NLI labels: entailment (0), neutral (1), and contradiction (2). Table~\ref{tab:confusion_baseline} shows the confusion matrix for our baseline model.
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{lccc}
+    \hline
+         & \textbf{Pred E} & \textbf{Pred N} & \textbf{Pred C} \\
+    \hline
+    \textbf{True E} & 3,009 & 221  & 66   \\
+    \textbf{True N} & 224   & 2,792 & 207 \\
+    \textbf{True C} & 66    & 231   & 2,915 \\
+    \hline
+  \end{tabular}
+  \caption{Confusion Matrix for Baseline Model}
+  \label{tab:confusion_baseline}
+\end{table}
+
+The most common error type is predicting neutral when the true label is contradiction (231 errors), followed closely by predicting entailment when the true label is neutral (224 errors). Overall, errors involving the neutral label account for 875 of the 1,015 total errors (86\%), suggesting the model struggles most with distinguishing neutral relationships from entailment or contradiction.
+
+\subsection{Qualitative Error Analysis}
+To understand why the model makes these errors, we manually examined examples where the model predicted neutral instead of contradiction (the most common error type). We identified three recurring patterns:
+
+\subsubsection{Pattern 1: Exact Word Overlap}
+The model appears to use word overlap as a heuristic for predicting neutral or entailment.
+For example:
+
+\begin{itemize}
+    \item Premise: "Two men are in an electronics workshop, working on computers or equipment."
+    \item Hypothesis: "The men are unaware of what computers are."
+    \item True: Contradiction, Predicted: Neutral
+\end{itemize}
+Here, the shared word "computers" may lead the model to predict neutral despite the clear contradiction.
+
+\subsubsection{Pattern 2: Semantic Association}
+The model treats semantically related concepts as evidence against contradiction:
+
+\begin{itemize}
+    \item Premise: "A woman with red-hair swings a pillow and laughs."
+    \item Hypothesis: "A woman makes her bed comfortable."
+    \item True: Contradiction, Predicted: Neutral
+\end{itemize}
+The association between "pillow" and "bed" appears to trigger a neutral prediction, even though the actions described are incompatible.
+
+\subsubsection{Pattern 3: Action Overlap}
+When premise and hypothesis share similar actions or scenarios, the model defaults to neutral:
+
+\begin{itemize}
+    \item Premise: "Five people are sitting on horses at a rodeo."
+    \item Hypothesis: "Bandits are sitting on horses as they prepare for a robbery."
+    \item True: Contradiction, Predicted: Neutral
+\end{itemize}
+The shared action "sitting on horses" leads to neutral despite different contexts (rodeo vs. robbery).
+
+\subsection{Hypothesis-Only Baseline}
+
+To test whether the model relies on spurious correlations in the hypothesis alone, we trained a hypothesis-only baseline following \citet{poliak2018hypothesis}. This model receives only the hypothesis as input, without access to the premise. If this model achieves high accuracy, it indicates the presence of dataset artifacts in the hypothesis text.
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{lccc}
+    \hline
+      \textbf{Model}   & \textbf{Accuracy} & \textbf{Errors} & \textbf{Eval Loss} \\
+    \hline
+    \textbf{Baseline Model} & 89.69\%   & 1,015 & 0.2997   \\
+    \textbf{Hypothesis-Only} & 89.40\%   & 1,035 & 0.3005 \\
+    \textbf{Difference} & -0.29\%    & +20   & +0.0008 \\
+    \hline
+  \end{tabular}
+  \caption{Hypothesis-Only vs. Baseline Model}
+  \label{tab:hyp_only_comparison}
+\end{table}
+
+Surprisingly, the hypothesis-only model achieves nearly identical performance (89.40\%) to the baseline model (Table~\ref{tab:hyp_only_comparison}). This indicates that the model can predict labels with high accuracy without reasoning about the relationship between premise and hypothesis, demonstrating a severe hypothesis bias in the dataset.
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{lcccc}
+    \hline
+      \textbf{Error Type}   & \textbf{Baseline} & \textbf{Hypo-Only} & \textbf{Diff} \\
+    \hline
+    \textbf{Total Error} & 1,015    & 1,035 &  +20   \\
+    \textbf{$0  \rightarrow 1$} & 221   & 233 & +12 \\
+    \textbf{$0  \rightarrow 2$} & 66   & 67 & +1 \\
+    \textbf{$1  \rightarrow 0$} & 224   & 215 & -9 \\
+    \textbf{$1  \rightarrow 2$} & 207   & 212 & +5 \\
+    \textbf{$2  \rightarrow 0$} & 66   & 67 & +1 \\
+    \textbf{$2  \rightarrow 1$} & 231   & 241 & +10 \\
+    \hline
+  \end{tabular}
+  \caption{Error Distribution Comparison}
+  \label{tab:error_distribution}
+\end{table}
+
+The error distributions are nearly identical between the two models, with contradiction→neutral remaining the most common error (231 vs. 241 errors) as shown in Table~\ref{tab:error_distribution}. This suggests that the patterns we identified in our qualitative analysis, word overlap, semantic associations, and action overlap are likely driven by artifacts in the hypothesis alone, rather than genuine reasoning about premise-hypothesis relationships.
+
+\subsection{Word Overlap Analysis}
+
+We hypothesized that examples with higher word overlap between premise and hypothesis would be more likely to be incorrectly classified as neutral. To test this, we computed the number of shared words for each example.
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{lccc}
+    \hline
+      \textbf{Model}   & \textbf{Crct Pred} & \textbf{Incrct Pred} & \textbf{0→1} \\
+    \hline
+    \textbf{Baseline} & 3.00   & 2.96 & 2.47   \\
+    \textbf{Hyp-Only} & 3.00   & 2.94 & 2.56 \\
+    \hline
+  \end{tabular}
+  \caption{Average Word Overlap}
+  \label{tab:word_overlap}
+\end{table}
+
+Counter to our initial hypothesis, examples that were incorrectly predicted by the baseline model actually have lower word overlap (2.47) than correct predictions (3.00) as shown in Table~\ref{tab:word_overlap}. This suggests that the issue is not the quantity of overlapping words, but rather which words overlap and how they semantically relate. The semantic association pattern we identified (e.g., "pillow" → "bed", "snow" → "snowman") may be more important than simple word count.
+Interestingly, the hypothesis-only model shows a different pattern: contradiction→neutral errors have higher average overlap (2.56) compared to the baseline model's errors (2.47). This suggests that examples with higher premise-hypothesis overlap may contain hypotheses that appear more "neutral-sounding" even in isolation, contributing to the hypothesis bias we observed.
+\section{Debiasing Approach}
+
+\subsection{Motivation}
+Our Baseline Model Analysis revealed that the model relies heavily on hypothesis-only artifacts, with the hypothesis-only baseline achieving 89.40\% accuracy compared to 89.69\% for the baseline model. To address this bias, we implemented an ensemble debiasing approach to reduce the model's reliance on hypothesis shortcuts and encourage genuine premise-hypothesis reasoning.
+
+\subsection{Product-of-Experts Implementation}
+
+\subsubsection{Method: Ensemble Debiasing with Product-of-Experts}
+We employed an ensemble debiasing technique inspired by \citet{clark2019dont}, using our hypothesis-only model as a "bias expert" to identify examples with spurious correlations. The approach works by down weighting training examples where the hypothesis-only model is highly confident, forcing the baseline model to focus on examples that require genuine reasoning about premise-hypothesis relationships.
+
+\subsubsection{Implementation}
+We trained new models from scratch using a weighted loss function. During training, we computed example weights based on the hypothesis-only model's confidence:
+\begin{itemize}
+    \item For each training example, we computed predictions from both the baseline model (premise + hypothesis) and the hypothesis-only model
+    \item We measured the hypothesis-only model's confidence as the maximum predicted probability: $confidence = max(softmax(bias_{logits}))$
+    \item We assigned weights inversely proportional to this confidence: $weight = 1.0 - \alpha \times confidence$, where $\alpha$ controls the strength of debiasing
+    \item We applied these weights to the cross-entropy loss: $loss = mean(weight \times CE(predictions, labels))$
+\end{itemize}
+
+Intuition: When the hypothesis-only model is 95\% confident, it likely found a shortcut (e.g., "pregnant" → contradiction). By assigning this example a low weight (e.g., 0.05 when $\alpha$=0.9), we force the baseline model to learn from harder examples where hypothesis-only is uncertain and premise information is necessary. Table~\ref{tab:weight_examples} illustrates how different confidence levels map to weights under different $\alpha$ values.
+
+\begin{table*}[h]
+  \centering
+  \begin{tabular}{lccc}
+    \hline
+      \textbf{Hyp-Only Confidence}   & \textbf{$Weight (\alpha=0.5)$} & \textbf{$Weight (\alpha=0.9)$} & \textbf{Interpretation} \\
+    \hline
+        0.95 (very confident)   & 0.525     & 0.145     & Likely shortcut   \\
+        0.60 (moderate)	        & 0.70      & 0.46      & Mixed signal \\
+        0.40 (uncertain)	    & 0.80      & 0.64      & Needs reasoning \\
+    \hline
+  \end{tabular}
+  \caption{Weight Examples}
+  \label{tab:weight_examples}
+\end{table*}
+
+\subsubsection{Hyperparameter Exploration}
+
+We systematically explored different values of the weighting parameter $\alpha$ to find the optimal balance between removing bias and preserving useful signal. Table~\ref{tab:debiasing_results} presents the results for different $\alpha$ values showing that moderate weighting ($\alpha$=0.5) achieves the best performance while aggressive weighting ($\alpha$=0.9) significantly degrades accuracy.
+
+\begin{table*}[h]
+  \centering
+  \begin{tabular}{lccccc}
+    \hline
+      \textbf{Model}   & $\textbf{$\alpha$}$ & \textbf{Accuracy} & \textbf{Total Errors} & $\textbf{C $\rightarrow$ N Errors}$ & \textbf{Change from Baseline}\\
+    \hline
+        Baseline    & 0.0   & 89.69\%     & 1,015   & 231   & - \\
+        Debiased    & 0.9   & 88.70\%     & 1,112   & 273   & +42 \\
+        Debiased    & 0.5   & 89.09\%     & 1,074   & 240   & +9 \\
+        Debiased    & 0.3   & 88.99\%     & 1,084   & 243   & +12 \\
+    \hline
+  \end{tabular}
+  \caption{Debiasing Results with Different Weighting Strengths}
+  \label{tab:debiasing_results}
+\end{table*}
+
+\subsection{Experimental Results}
+
+The debiasing approach showed mixed results. While we successfully identified that moderate weighting ($\alpha$=0.5) performed best among the debiasing variants, achieving 89.09\% accuracy, this still fell short of the baseline's 89.69\% accuracy. Most notably, contradiction→neutral errors increased from 231 to 240, indicating that the debiasing did not successfully reduce our target error type. Figure~\ref{fig:debiasing_results} illustrates the U-shaped relationship between debiasing strength and both accuracy and C→N errors, showing that moderate weighting achieves the best balance but still underperforms the baseline.
+
+\begin{figure*}[t]
+  \includegraphics[width=1\linewidth]{debiasing_results.png} \hfill
+  \caption {Both accuracy and C→N errors show a U-shaped relationship with debiasing strength. Moderate weighting ($\alpha$=0.5) achieves the best balance, but still underperforms the baseline on both metrics. This suggests fundamental limitations in confidence-based debiasing.}
+  \label{fig:debiasing_results}
+\end{figure*}
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{lcccc}
+    \hline
+         \textbf{} & \textbf{Baseline} & \textbf{$\alpha=0.5$} & \textbf{Difference} \\
+    \hline
+    \textbf{$0  \rightarrow 1$} & 221   & 229 & +8 \\
+    \textbf{$0  \rightarrow 2$} & 66   & 72 & +6 \\
+    \textbf{$1  \rightarrow 0$} & 224   & 222 & -2 \\
+    \textbf{$1  \rightarrow 2$} & 207   & 234 & +27 \\
+    \textbf{$2  \rightarrow 0$} & 66   & 77 & +11 \\
+    \textbf{$2  \rightarrow 1$} & 231   & 240 & +9 \\
+    \hline
+  \end{tabular}
+  \caption{Confusion Matrix Comparison}
+  \label{tab:confusion_debiased}
+\end{table}
+
+\subsection{Error Analysis}
+
+To better understand the impact of debiasing, we analyzed which error types increased most significantly (Table~\ref{tab:error_analysis}).
+
+\begin{table*}[h]
+  \centering
+  \begin{tabular}{lccccc}
+    \hline
+      \textbf{Error Type}   & \textbf{Baseline} & \textbf{$\alpha=0.5$} & \textbf{Absolute Change} & \textbf{\% Increase} \\
+    \hline
+    \textbf{$1  \rightarrow 2$} & 207   & 234 & +27 & +13.0\% \\
+    \textbf{$2  \rightarrow 1$} & 231   & 240 & +9  & +3.9\% \\
+    \textbf{$0  \rightarrow 1$} & 221   & 229 & +8  & +3.6\% \\
+    \textbf{$2  \rightarrow 0$} & 66   & 77 & +11   & +16.7\% \\
+    \textbf{$0  \rightarrow 2$} & 66   & 72 & +6    & + 9.1\% \\
+    \textbf{$1  \rightarrow 0$} & 224   & 222 & -2  & -0.9\% \\
+    \hline
+  \end{tabular}
+  \caption{Error Distribution Comparison}
+  \label{tab:error_analysis}
+\end{table*}
+
+The largest absolute increase was in neutral→contradiction errors (+27 cases, 13\% increase). This suggests that down weighting hypothesis-confident examples disproportionately hurt the model's ability to recognize neutral relationships. Hypothesis-only signals for "neutral" may be more complex than simple shortcuts, and removing them prevented the model from learning these patterns.
+
+\subsubsection{Examples Where Debiasing Failed}
+
+We examined 227 specific cases where the baseline model predicted correctly but the debiased model ($\alpha$=0.5) made errors. These examples reveal patterns in how debiasing degraded performance:
+
+\textbf{Example 1}: Debiased predicts Contradiction, should be Neutral
+\begin{itemize}
+    \item Premise: "A young boy in a field of flowers carrying a ball"
+    \item Hypothesis: "boy leaving baseball game"
+    \item True Label: Neutral
+    \item Baseline prediction: ✓ Neutral
+    \item Debiased prediction: ✗ Contradiction
+\end{itemize}
+Analysis: The baseline correctly identifies this as neutral—the boy carrying a ball doesn't contradict leaving a baseball game (could be before/after) but doesn't entail it either. The debiased model incorrectly predicts contradiction, possibly because down weighting hypothesis-confident examples removed signals about sports-related contexts that can overlap without contradiction.
+
+\textbf{Example 2}: Debiased predicts Neutral, should be Contradiction
+\begin{itemize}
+    \item Premise: "Families waiting in line at an amusement park for their turn to ride."
+    \item Hypothesis: "People are waiting to see a movie."
+    \item True Label: Contradiction
+    \item Baseline prediction: ✓ Contradiction
+    \item Debiased prediction: ✗ Neutral
+\end{itemize}
+Analysis: This is a clear contradiction, waiting at an amusement park for a ride vs. waiting to see a movie are incompatible activities. The debiased model fails to recognize this, likely because the shared "waiting" action and "people" overlap led to uncertainty. This exemplifies the increased C→N errors (240 vs. 231) we observed in Table~\ref{tab:confusion_debiased}.
+
+\textbf{Example 3}: Debiased predicts Neutral, should be Contradiction
+\begin{itemize}
+    \item Premise: "A small ice cream stand with two people standing near it."
+    \item Hypothesis: "Two people selling ice cream from a car."
+    \item True Label: Contradiction
+    \item Baseline prediction: ✓ Contradiction
+    \item Debiased prediction: ✗ Neutral
+\end{itemize}
+Analysis: "Ice cream stand" and "ice cream from a car" are different venues/methods of selling. The baseline recognizes this contradiction, but the debiased model, seeing the semantic overlap ("ice cream," "two people," "selling"), defaults to neutral. This demonstrates how removing hypothesis-confident signals can prevent the model from distinguishing between semantic similarity and actual contradiction.
+
+\textbf{Example 4}: Debiased predicts Entailment, should be Neutral
+\begin{itemize}
+    \item Premise: "A man poses for a photo in front of a Chinese building by jumping."
+    \item Hypothesis: "The man has experience in taking photos."
+    \item True Label: Neutral
+    \item Baseline prediction: ✓ Neutral
+    \item Debiased prediction: ✗ Entailment
+\end{itemize}
+Analysis: Posing for a photo doesn't entail having experience in taking photos (the man is the subject, not the photographer). The debiased model incorrectly predicts entailment, possibly over-generalizing from the shared "photo" concept without properly distinguishing the roles.
+
+\textbf{Example 5}: Debiased predicts Neutral, should be Contradiction
+\begin{itemize}
+    \item Premise: "A boy in red slides down an inflatable ride."
+    \item Hypothesis: "A boy pierces a knife through an inflatable ride."
+    \item True Label: Contradiction
+    \item Baseline prediction: ✓ Contradiction
+    \item Debiased prediction: ✗ Neutral
+\end{itemize}
+Analysis: "Slides down" and "pierces a knife through" are clearly contradictory actions. Despite the obvious contradiction, the debiased model predicts neutral, likely because the shared elements ("boy," "inflatable ride") are given too much weight after debiasing removed the model's ability to recognize action-level contradictions through hypothesis patterns.
+
+\subsection{Pattern Analysis}
+
+Across these 227 examples where debiasing caused new errors, we observe:
+\begin{itemize}
+    \item 60\% (Examples 2, 3, 5): Debiased predicts neutral instead of contradiction, consistent with our finding that C→N errors increased from 231 to 240
+    \item Shared semantic elements (ice cream, waiting, inflatable ride) lead debiased model to incorrectly predict neutral, suggesting the model lost
+    \item its ability to distinguish semantic overlap from genuine relationships
+    \item Action-level reasoning degraded: The model struggles to recognize that shared objects with contradictory actions (slides vs. pierces) still
+constitute contradictions
+\end{itemize}
+
+These examples support our hypothesis that hypothesis-only confidence-based down weighting removes both shortcuts and legitimate linguistic signals, particularly those involving semantic relationships and action-level reasoning.
+
+
+\section{Discussion}
+While our ensemble debiasing approach did not improve upon the baseline, the systematic exploration provides valuable insights into the nature of hypothesis bias in SNLI. The fact that moderate weighting ($\alpha$=0.5) significantly outperformed aggressive weighting suggests that hypothesis-only confidence contains a mix of both spurious shortcuts and legitimate linguistic signals.
+
+\section{Limitations}
+
+Our study has several limitations that suggest directions for future work. First, we evaluate only on SNLI; the extent to which our findings generalize to other NLI datasets (e.g., MultiNLI, ANLI) remains unknown. Second, we use only ELECTRA-small for computational efficiency; larger models or different architectures may exhibit different bias patterns or respond differently to debiasing. Third, we explore only Product-of-Experts debiasing; other approaches such as adversarial training, data augmentation, or learned reweighting schemes may prove more effective. Finally, we focus exclusively on hypothesis bias; SNLI contains other artifacts (e.g., premise-only biases) that we do not address.
+
+\section{Conclusion}
+
+This work investigated dataset artifacts in SNLI through two complementary approaches: systematic analysis and attempted mitigation.
+
+\subsection{Summary of Findings}
+
+Our analysis revealed severe hypothesis bias in the ELECTRA-small model trained on SNLI:
+
+\begin{itemize}
+    \item A hypothesis-only baseline achieved 89.40\% accuracy, only 0.29\% below the baseline model's 89.69\%
+    \item Error distributions were nearly identical between baseline and hypothesis-only models (231 vs. 241 contradiction→neutral errors)
+    \item Qualitative analysis identified three error patterns word overlap, semantic associations, and action overlap all driven by hypothesis artifacts rather than premise-hypothesis reasoning
+    \item Systematic exploration of weighting strengths ($\alpha$=0.3, 0.5, 0.9) showed that moderate weighting ($\alpha$=0.5) performed best but still underperformed baseline
+    \item The optimal debiased model increased errors from 1,015 to 1,074, with contradiction→neutral errors rising from 231 to 240
+    \item Detailed error analysis revealed that hypothesis-only confidence captures both spurious shortcuts and legitimate linguistic signals
+    \item Examples where debiasing failed demonstrated that high hypothesis-only confidence does not reliably indicate the presence of shortcuts
+\end{itemize}
+
+\subsection{Implications}
+Our results highlight a fundamental challenge in debiasing NLI models: identifying which examples contain harmful shortcuts versus useful linguistic patterns. Simple confidence-based down weighting, while theoretically motivated, proved insufficient because:
+\begin{itemize}
+    \item Hypothesis-only models can be confident on both shortcut examples and genuinely difficult examples
+    \item Some hypothesis-level patterns (e.g., negation, semantic contradictions) are legitimate features, not artifacts
+    \item Removing all hypothesis-confident examples eliminates useful training signal along with shortcuts
+\end{itemize}
+
+\subsection{Final Reflection}
+While our ensemble debiasing approach did not achieve improved accuracy, this negative result contributes valuable insights to the understanding of dataset artifacts in NLI. The systematic exploration of weighting strengths and detailed error analysis demonstrates that the challenge of debiasing extends beyond merely identifying biased examples it requires distinguishing between harmful shortcuts and useful linguistic features, a problem that
+remains open for future research.
+
+The pervasiveness of hypothesis bias in SNLI (89.40\% hypothesis-only accuracy) underscores the need for continued work on both dataset construction and model training methods that encourage genuine natural language understanding rather than artifact exploitation.
+
+
+% Bibliography entries for the entire Anthology, followed by custom entries
+%\bibliography{anthology,custom}
+% Custom bibliography entries only
+\bibliographystyle{acl_natbib}
+\bibliography{custom}
+
+
+\end{document}
